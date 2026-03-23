@@ -55,12 +55,41 @@ aws s3 sync s3://$S3_BUCKET/mods/ $MINECRAFT_DIRECTORY/mods/
 chown -R minecraft:minecraft $MINECRAFT_DIRECTORY/mods
 
 # --- Setup Backup Cron (10 Minutes) ---
-cp $MINECRAFT_DIRECTORY/../scripts/backup-s3.sh /usr/local/bin/minecraft-backup.sh
+cat <<EOF > /usr/local/bin/minecraft-backup.sh
+#!/bin/bash
+MINECRAFT_DIRECTORY="/opt/minecraft"
+S3_BUCKET="${S3_BUCKET}"
+TIMESTAMP=\$(date +"%Y%m%d_%H%M%S")
+echo "Starting backup at \$TIMESTAMP..."
+aws s3 sync \$MINECRAFT_DIRECTORY/world s3/\$S3_BUCKET/backups/world/
+EOF
 chmod +x /usr/local/bin/minecraft-backup.sh
 (crontab -l 2>/dev/null; echo "*/10 * * * * /usr/local/bin/minecraft-backup.sh >> /var/log/minecraft-backup.log 2>&1") | crontab -
 
 # --- Setup Auto-Shutdown ---
-cp $MINECRAFT_DIRECTORY/../scripts/autoshutdown.sh /usr/local/bin/autoshutdown.sh
+cat <<EOF > /usr/local/bin/autoshutdown.sh
+#!/bin/bash
+CHECK_INTERVAL=300
+IDLE_LIMIT=900
+IDLE_COUNT=0
+while true; do
+    if systemctl is-active --quiet minecraft; then
+        PLAYER_COUNT=\$(netstat -atn | grep :25565 | grep ESTABLISHED | wc -l)
+        if [ "\$PLAYER_COUNT" -eq 0 ]; then
+            IDLE_COUNT=\$((\$IDLE_COUNT + \$CHECK_INTERVAL))
+            echo "No players online. Idle for \$IDLE_COUNT seconds."
+        else
+            IDLE_COUNT=0
+        fi
+        if [ "\$IDLE_COUNT" -ge "\$IDLE_LIMIT" ]; then
+            /usr/local/bin/minecraft-backup.sh
+            sudo shutdown -h now
+            exit 0
+        fi
+    fi
+    sleep \$CHECK_INTERVAL
+done
+EOF
 chmod +x /usr/local/bin/autoshutdown.sh
 cat <<EOF > /etc/systemd/system/autoshutdown.service
 [Unit]

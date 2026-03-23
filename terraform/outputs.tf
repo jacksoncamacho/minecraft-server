@@ -5,3 +5,7 @@ output "instance_public_ip" {
 output "s3_bucket_name" {
   value = aws_s3_bucket.backups.id
 }
+
+output "instance_id" {
+  value = aws_spot_instance_request.server.spot_instance_id
+}
