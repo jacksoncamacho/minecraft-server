@@ -126,7 +126,8 @@ resource "aws_instance" "server" {
   iam_instance_profile   = aws_iam_instance_profile.minecraft_profile.name
 
   tags = {
-    Name = "minecraft-server"
+    Name             = "minecraft-server"
+    redeploy_trigger = "2026-03-23T01:15:00"
   }
 
   user_data = templatefile("${path.module}/../scripts/setup-server.sh", {
