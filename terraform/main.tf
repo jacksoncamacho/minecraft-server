@@ -111,9 +111,9 @@ data "aws_ami" "ubuntu" {
 }
 
 resource "aws_key_pair" "minecraft_key" {
-  count      = var.ssh_public_key != "" ? 1 : 0
-  key_name   = "minecraft-key-seressa"
-  public_key = var.ssh_public_key
+  count           = var.ssh_public_key != "" ? 1 : 0
+  key_name_prefix = "minecraft-key-"
+  public_key      = var.ssh_public_key
 }
 
 resource "aws_spot_instance_request" "server" {
