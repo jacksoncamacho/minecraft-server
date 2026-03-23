@@ -74,7 +74,7 @@ resource "aws_iam_role_policy" "s3_access" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Action   = ["s3:PutObject", "s3:GetObject", "s3:ListBucket"]
+      Action   = ["s3:PutObject", "s3:GetObject", "s3:ListBucket", "s3:DeleteObject"]
       Effect   = "Allow"
       Resource = [
         aws_s3_bucket.backups.arn,
