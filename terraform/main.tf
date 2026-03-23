@@ -125,7 +125,7 @@ resource "aws_instance" "server" {
   vpc_security_group_ids = [aws_security_group.minecraft.id]
   iam_instance_profile   = aws_iam_instance_profile.minecraft_profile.name
 
-  user_data_replacement_on_change = true
+  user_data_replace_on_change = true
 
   tags = {
     Name             = "minecraft-server-final-production"
