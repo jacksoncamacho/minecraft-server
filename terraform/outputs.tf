@@ -1,5 +1,5 @@
 output "instance_public_ip" {
-  value = aws_spot_instance_request.server.public_ip
+  value = aws_eip.minecraft_eip.public_ip
 }
 
 output "s3_bucket_name" {

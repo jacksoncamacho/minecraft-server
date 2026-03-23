@@ -90,7 +90,7 @@ resource "aws_iam_role_policy_attachment" "ssm_managed" {
 }
 
 resource "aws_iam_instance_profile" "minecraft_profile" {
-  name = "minecraft-instance-profile"
+  name = "minecraft-instance-profile-final"
   role = aws_iam_role.minecraft_role.name
 }
 
@@ -130,6 +130,17 @@ resource "aws_spot_instance_request" "server" {
   }
 
   tags = { Name = "minecraft-server" }
+}
+
+# --- Elastic IP (Static IP) ---
+resource "aws_eip" "minecraft_eip" {
+  domain = "vpc"
+  tags   = { Name = "minecraft-eip" }
+}
+
+resource "aws_eip_association" "minecraft_eip_assoc" {
+  instance_id   = aws_spot_instance_request.server.spot_instance_id
+  allocation_id = aws_eip.minecraft_eip.id
 }
 
 # --- DNS (Optional) ---
