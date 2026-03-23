@@ -127,11 +127,11 @@ systemctl enable autoshutdown
 
 # --- Restore World from S3 (Latest Snapshot) ---
 echo "Checking for versioned backups in S3..."
-LATEST_BACKUP=\$(/usr/local/bin/aws s3 ls s3://$S3_BUCKET/backups/ | grep "PRE " | awk '{print \$2}' | sort -r | head -n 1)
+LATEST_BACKUP=$(/usr/local/bin/aws s3 ls s3://$S3_BUCKET/backups/ | grep "PRE " | awk '{print $2}' | sort -r | head -n 1)
 
-if [ -n "\$LATEST_BACKUP" ]; then
-    echo "Restoring latest backup: \$LATEST_BACKUP"
-    /usr/local/bin/aws s3 sync s3://$S3_BUCKET/backups/\$LATEST_BACKUP $MINECRAFT_DIRECTORY/world/
+if [ -n "$LATEST_BACKUP" ]; then
+    echo "Restoring latest backup: $LATEST_BACKUP"
+    /usr/local/bin/aws s3 sync s3://$S3_BUCKET/backups/$LATEST_BACKUP $MINECRAFT_DIRECTORY/world/
     chown -R minecraft:minecraft $MINECRAFT_DIRECTORY/world/
 else
     echo "No versioned backups found. Checking for legacy 'world/' folder..."
