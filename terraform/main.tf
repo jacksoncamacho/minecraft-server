@@ -1,3 +1,11 @@
+terraform {
+  backend "s3" {
+    bucket = "bijadillo-terraform-state-city"
+    key    = "minecraft/terraform.tfstate"
+    region = "us-east-1"
+  }
+}
+
 provider "aws" {
   region = var.aws_region
 }
@@ -96,8 +104,8 @@ resource "aws_iam_instance_profile" "minecraft_profile" {
 
 # --- S3 Bucket for Backups ---
 resource "aws_s3_bucket" "backups" {
-  bucket        = "minecraft-world-backups-seressa-final"
-  force_destroy = false # Protect the world data!
+  bucket        = "minecraft-world-storage-seressa-v2"
+  force_destroy = false
 }
 
 # --- EC2 Spot Instance ---
