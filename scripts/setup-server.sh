@@ -111,6 +111,7 @@ After=network.target
 [Service]
 User=minecraft
 WorkingDirectory=$MINECRAFT_DIRECTORY
+Environment="TERM=xterm-256color"
 # Running inside a screen session allows interactive console access
 ExecStart=/usr/bin/screen -DmS minecraft /usr/bin/java -Xms1G -Xmx1536M -XX:+UseG1GC -jar fabric-server-launch.jar nogui
 # Graceful shutdown by sending "stop" to the screen session
