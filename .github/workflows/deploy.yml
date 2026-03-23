@@ -27,15 +27,17 @@ jobs:
         working-directory: ./terraform
         run: terraform apply -auto-approve
 
-      - name: Get Instance IP
+      - name: Get Instance IP and Bucket
         id: vars
         working-directory: ./terraform
-        run: echo "ip=$(terraform output -raw instance_public_ip)" >> $GITHUB_OUTPUT
+        run: |
+          echo "ip=$(terraform output -raw instance_public_ip)" >> $GITHUB_OUTPUT
+          echo "s3_bucket=$(terraform output -raw s3_bucket_name)" >> $GITHUB_OUTPUT
 
       - name: Sync Mods to Server
         run: |
           # Sync local mods to S3
-          aws s3 sync ./mods s3://${{ secrets.S3_BUCKET_NAME }}/mods/ --delete
+          aws s3 sync ./mods s3://${{ steps.vars.outputs.s3_bucket }}/mods/ --delete
           
           # Wait for SSM to be ready (it can take a few minutes on first boot)
           echo "Waiting for instance to be ready in SSM..."
@@ -53,4 +55,4 @@ jobs:
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
             --targets "Key=tag:Name,Values=minecraft-server" \
-            --parameters 'commands=["aws s3 sync s3://${{ secrets.S3_BUCKET_NAME }}/mods/ /opt/minecraft/mods/ --delete", "chown -R minecraft:minecraft /opt/minecraft/mods", "systemctl restart minecraft"]'
+            --parameters 'commands=["aws s3 sync s3://${{ steps.vars.outputs.s3_bucket }}/mods/ /opt/minecraft/mods/ --delete", "chown -R minecraft:minecraft /opt/minecraft/mods", "systemctl restart minecraft"]'
