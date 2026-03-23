@@ -119,8 +119,10 @@ After=network.target
 [Service]
 User=minecraft
 WorkingDirectory=$MINECRAFT_DIRECTORY
-# Optimized for 2GB RAM (t4g.small)
-ExecStart=/usr/bin/java -Xms1G -Xmx1536M -XX:+UseG1GC -jar fabric-server-launch.jar nogui
+# Running inside a screen session allows interactive console access
+ExecStart=/usr/bin/screen -DmS minecraft /usr/bin/java -Xms1G -Xmx1536M -XX:+UseG1GC -jar fabric-server-launch.jar nogui
+# Graceful shutdown by sending "stop" to the screen session
+ExecStop=/usr/bin/screen -p 0 -S minecraft -X eval 'stuff "stop\\015"'
 Restart=always
 
 [Install]
