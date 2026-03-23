@@ -140,8 +140,6 @@ resource "aws_spot_instance_request" "server" {
     volume_size = 10
     volume_type = "gp3"
   }
-
-  tags = { Name = "minecraft-server" }
 }
 
 # --- Elastic IP (Static IP) ---
