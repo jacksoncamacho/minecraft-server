@@ -1,0 +1,92 @@
+#!/bin/bash
+set -e
+
+# --- Configuration ---
+MINECRAFT_DIRECTORY="/opt/minecraft"
+S3_BUCKET="${s3_bucket}"
+JAVA_VERSION="21"
+FABRIC_LOADER_VERSION="0.16.10"
+MINECRAFT_VERSION="1.21.10"
+
+# --- Install Dependencies ---
+apt-get update
+apt-get install -y openjdk-$JAVA_VERSION-jre-headless wget curl git awscli screen net-tools
+
+# --- Setup Minecraft User ---
+if ! id -u minecraft >/dev/null 2>&1; then
+  useradd -m -r -d $MINECRAFT_DIRECTORY minecraft
+fi
+
+mkdir -p $MINECRAFT_DIRECTORY/mods
+chown -R minecraft:minecraft $MINECRAFT_DIRECTORY
+
+# --- Download Fabric Loader ---
+# We use the official Fabric installer
+INSTALLER_URL="https://maven.fabricmc.net/net/fabricmc/fabric-installer/1.0.1/fabric-installer-1.0.1.jar"
+wget -O /tmp/fabric-installer.jar $INSTALLER_URL
+sudo -u minecraft java -jar /tmp/fabric-installer.jar server -mcversion $MINECRAFT_VERSION -loader $FABRIC_LOADER_VERSION -downloadMainWindow
+
+# --- EULA ---
+echo "eula=true" > $MINECRAFT_DIRECTORY/eula.txt
+chown minecraft:minecraft $MINECRAFT_DIRECTORY/eula.txt
+
+# --- Server Properties ---
+# Basic optimized settings
+cat <<EOF > $MINECRAFT_DIRECTORY/server.properties
+difficulty=normal
+gamemode=survival
+max-players=20
+motd=Minecraft Server on AWS
+view-distance=10
+simulation-distance=8
+server-port=25565
+EOF
+chown minecraft:minecraft $MINECRAFT_DIRECTORY/server.properties
+
+# --- Mod Sync ---
+mkdir -p $MINECRAFT_DIRECTORY/mods
+aws s3 sync s3://$S3_BUCKET/mods/ $MINECRAFT_DIRECTORY/mods/
+chown -R minecraft:minecraft $MINECRAFT_DIRECTORY/mods
+
+# --- Setup Backup Cron (10 Minutes) ---
+cp $MINECRAFT_DIRECTORY/../scripts/backup-s3.sh /usr/local/bin/minecraft-backup.sh
+chmod +x /usr/local/bin/minecraft-backup.sh
+(crontab -l 2>/dev/null; echo "*/10 * * * * /usr/local/bin/minecraft-backup.sh >> /var/log/minecraft-backup.log 2>&1") | crontab -
+
+# --- Setup Auto-Shutdown ---
+cp $MINECRAFT_DIRECTORY/../scripts/autoshutdown.sh /usr/local/bin/autoshutdown.sh
+chmod +x /usr/local/bin/autoshutdown.sh
+cat <<EOF > /etc/systemd/system/autoshutdown.service
+[Unit]
+Description=Minecraft Auto-Shutdown
+After=minecraft.service
+
+[Service]
+ExecStart=/usr/local/bin/autoshutdown.sh
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl enable autoshutdown
+
+# --- Setup Systemd Service ---
+cat <<EOF > /etc/systemd/system/minecraft.service
+[Unit]
+Description=Minecraft Server
+After=network.target
+
+[Service]
+User=minecraft
+WorkingDirectory=$MINECRAFT_DIRECTORY
+# Optimized for 2GB RAM (t4g.small)
+ExecStart=/usr/bin/java -Xms1G -Xmx1536M -XX:+UseG1GC -jar fabric-server-launch.jar nogui
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable minecraft
+# We don't start it yet as we need to sync mods via the pipeline/script

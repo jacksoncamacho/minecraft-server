@@ -1,0 +1,58 @@
+name: Deploy Minecraft Server
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        working-directory: ./terraform
+        run: terraform init
+
+      - name: Terraform Apply
+        working-directory: ./terraform
+        run: terraform apply -auto-approve
+
+      - name: Get Instance IP
+        id: vars
+        working-directory: ./terraform
+        run: echo "ip=$(terraform output -raw instance_public_ip)" >> $GITHUB_OUTPUT
+
+      - name: Sync Mods to Server
+        run: |
+          # Sync local mods to S3
+          aws s3 sync ./mods s3://${{ secrets.S3_BUCKET_NAME }}/mods/ --delete
+          
+          # Wait for SSM to be ready (it can take a few minutes on first boot)
+          echo "Waiting for instance to be ready in SSM..."
+          for i in {1..10}; do
+            INSTANCE_STATUS=$(aws ssm describe-instance-information --filters "Key=tag:Name,Values=minecraft-server" --query "InstanceInformationList[0].PingStatus" --output text)
+            if [ "$INSTANCE_STATUS" == "Online" ]; then
+              echo "Instance is online!"
+              break
+            fi
+            echo "Waiting... ($i/10)"
+            sleep 30
+          done
+
+          # Trigger mod sync and restart
+          aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "Key=tag:Name,Values=minecraft-server" \
+            --parameters 'commands=["aws s3 sync s3://${{ secrets.S3_BUCKET_NAME }}/mods/ /opt/minecraft/mods/ --delete", "chown -R minecraft:minecraft /opt/minecraft/mods", "systemctl restart minecraft"]'
