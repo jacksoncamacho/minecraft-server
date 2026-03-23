@@ -125,9 +125,11 @@ resource "aws_instance" "server" {
   vpc_security_group_ids = [aws_security_group.minecraft.id]
   iam_instance_profile   = aws_iam_instance_profile.minecraft_profile.name
 
+  user_data_replacement_on_change = true
+
   tags = {
-    Name             = "minecraft-server"
-    redeploy_trigger = "2026-03-23T01:15:00"
+    Name             = "minecraft-server-final-production"
+    redeploy_trigger = "2026-03-23T01:21:00"
   }
 
   user_data = templatefile("${path.module}/../scripts/setup-server.sh", {
