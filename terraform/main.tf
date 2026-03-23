@@ -2,6 +2,14 @@ provider "aws" {
   region = var.aws_region
 }
 
+terraform {
+  backend "s3" {
+    bucket = "bijadillo-terraform-state-city"
+    key    = "minecraft/terraform.tfstate"
+    region = "us-east-1"
+  }
+}
+
 # --- VPC & Networking ---
 data "aws_vpc" "bijadillo" {
   filter {
@@ -19,7 +27,7 @@ data "aws_subnets" "public" {
 
 # --- Security Group ---
 resource "aws_security_group" "minecraft" {
-  name        = "minecraft-sg"
+  name        = "minecraft-sg-final"
   description = "Allow Minecraft and SSH"
   vpc_id      = data.aws_vpc.bijadillo.id
 
@@ -47,7 +55,7 @@ resource "aws_security_group" "minecraft" {
 
 # --- IAM Role for S3 Access ---
 resource "aws_iam_role" "minecraft_role" {
-  name = "minecraft-server-role-bijadillo"
+  name = "minecraft-server-role-final"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
