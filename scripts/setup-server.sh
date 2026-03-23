@@ -54,17 +54,28 @@ mkdir -p $MINECRAFT_DIRECTORY/mods
 aws s3 sync s3://$S3_BUCKET/mods/ $MINECRAFT_DIRECTORY/mods/
 chown -R minecraft:minecraft $MINECRAFT_DIRECTORY/mods
 
-# --- Setup Backup Cron (10 Minutes) ---
+# --- Setup Backup Script (3-Version Rotation) ---
 cat <<EOF > /usr/local/bin/minecraft-backup.sh
 #!/bin/bash
-# Fixed path to be consistent with Restore phase
 S3_BUCKET="$S3_BUCKET"
-echo "[$(date)] Starting world backup to s3://\$S3_BUCKET/world/"
-# Force a save-all if the server is running (via screen)
-# We send the command to the screen session as the minecraft user
+TIMESTAMP=\$(date +"%Y%m%d_%H%M%S")
+echo "[$(date)] Starting versioned backup to s3://\$S3_BUCKET/backups/\$TIMESTAMP/"
+
+# 1. Force a save-all
 sudo -u minecraft screen -S minecraft -X eval 'stuff "save-all\\015"'
 sleep 5
-/usr/local/bin/aws s3 sync /opt/minecraft/world/ s3://\$S3_BUCKET/world/ --delete
+
+# 2. Sync to a NEW timestamped folder
+/usr/local/bin/aws s3 sync /opt/minecraft/world/ s3://\$S3_BUCKET/backups/\$TIMESTAMP/
+
+# 3. Cleanup: Keep only the 3 most recent snapshots
+echo "Cleaning up old backups..."
+# List prefixes, sort by date desc, skip top 3, delete the rest
+/usr/local/bin/aws s3 ls s3://\$S3_BUCKET/backups/ | grep "PRE " | awk '{print \$2}' | sort -r | tail -n +4 | while read -r line; do
+    echo "Deleting old backup: \$line"
+    /usr/local/bin/aws s3 rm s3://\$S3_BUCKET/backups/\$line --recursive
+done
+
 echo "[$(date)] Backup complete."
 EOF
 chmod +x /usr/local/bin/minecraft-backup.sh
@@ -109,10 +120,19 @@ WantedBy=multi-user.target
 EOF
 systemctl enable autoshutdown
 
-# --- Restore World from S3 ---
-echo "Checking for world backups in S3..."
-aws s3 sync s3://$S3_BUCKET/world/ $MINECRAFT_DIRECTORY/world/
-chown -R minecraft:minecraft $MINECRAFT_DIRECTORY/world/
+# --- Restore World from S3 (Latest Snapshot) ---
+echo "Checking for versioned backups in S3..."
+LATEST_BACKUP=\$(aws s3 ls s3://$S3_BUCKET/backups/ | grep "PRE " | awk '{print \$2}' | sort -r | head -n 1)
+
+if [ -n "\$LATEST_BACKUP" ]; then
+    echo "Restoring latest backup: \$LATEST_BACKUP"
+    aws s3 sync s3://$S3_BUCKET/backups/\$LATEST_BACKUP $MINECRAFT_DIRECTORY/world/
+    chown -R minecraft:minecraft $MINECRAFT_DIRECTORY/world/
+else
+    echo "No versioned backups found. Checking for legacy 'world/' folder..."
+    aws s3 sync s3://$S3_BUCKET/world/ $MINECRAFT_DIRECTORY/world/
+    chown -R minecraft:minecraft $MINECRAFT_DIRECTORY/world/
+fi
 
 # --- Setup Systemd Service ---
 cat <<EOF > /etc/systemd/system/minecraft.service
