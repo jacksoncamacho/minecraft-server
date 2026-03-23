@@ -58,7 +58,7 @@ chown -R minecraft:minecraft $MINECRAFT_DIRECTORY/mods
 cat <<EOF > /usr/local/bin/minecraft-backup.sh
 #!/bin/bash
 MINECRAFT_DIRECTORY="/opt/minecraft"
-S3_BUCKET="${S3_BUCKET}"
+S3_BUCKET="$S3_BUCKET"
 TIMESTAMP=\$(date +"%Y%m%d_%H%M%S")
 echo "Starting backup at \$TIMESTAMP..."
 aws s3 sync \$MINECRAFT_DIRECTORY/world s3/\$S3_BUCKET/backups/world/
