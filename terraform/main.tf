@@ -10,14 +10,6 @@ provider "aws" {
   region = var.aws_region
 }
 
-terraform {
-  backend "s3" {
-    bucket = "bijadillo-terraform-state-city"
-    key    = "minecraft/terraform.tfstate"
-    region = "us-east-1"
-  }
-}
-
 # --- VPC & Networking ---
 data "aws_vpc" "bijadillo" {
   filter {
