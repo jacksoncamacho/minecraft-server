@@ -46,16 +46,23 @@ jobs:
           fi
           
           # Wait for SSM to be ready (it can take a few minutes on first boot)
-          echo "Waiting for instance to be ready in SSM..."
-          for i in {1..10}; do
+          echo "Waiting for instance ${{ steps.vars.outputs.instance_id }} to be ready in SSM..."
+          READY=false
+          for i in {1..20}; do
             INSTANCE_STATUS=$(aws ssm describe-instance-information --filters "Key=InstanceIds,Values=${{ steps.vars.outputs.instance_id }}" --query "InstanceInformationList[0].PingStatus" --output text)
             if [ "$INSTANCE_STATUS" == "Online" ]; then
               echo "Instance is online!"
+              READY=true
               break
             fi
-            echo "Waiting... ($i/10)"
+            echo "Waiting... ($i/20) - Status: $INSTANCE_STATUS"
             sleep 30
           done
+          
+          if [ "$READY" = false ]; then
+            echo "Error: Instance did not come online in SSM after 10 minutes."
+            exit 1
+          fi
 
           # Trigger file sync and restart
           aws ssm send-command \
