@@ -35,6 +35,16 @@ jobs:
           echo "s3_bucket=$(terraform output -raw s3_bucket_name)" >> $GITHUB_OUTPUT
           echo "instance_id=$(terraform output -raw instance_id)" >> $GITHUB_OUTPUT
 
+      - name: Ensure Instance is Started
+        run: |
+          INSTANCE_STATE=$(aws ec2 describe-instances --instance-ids ${{ steps.vars.outputs.instance_id }} --query "Reservations[0].Instances[0].State.Name" --output text)
+          if [ "$INSTANCE_STATE" == "stopped" ]; then
+            echo "Instance is stopped. Starting it now..."
+            aws ec2 start-instances --instance-ids ${{ steps.vars.outputs.instance_id }}
+          else
+            echo "Instance is currently in state: $INSTANCE_STATE"
+          fi
+
       - name: Sync Project Files to S3
         run: |
           # Sync local mods to S3
