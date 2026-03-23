@@ -5,7 +5,7 @@ set -e
 MINECRAFT_DIRECTORY="/opt/minecraft"
 S3_BUCKET="${s3_bucket}"
 JAVA_VERSION="21"
-FABRIC_LOADER_VERSION="0.16.10"
+FABRIC_LOADER_VERSION="0.17.0"
 MINECRAFT_VERSION="1.21.10"
 
 # --- Install Dependencies ---
