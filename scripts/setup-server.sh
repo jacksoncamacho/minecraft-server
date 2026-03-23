@@ -86,11 +86,11 @@ EOF
 chmod +x /usr/local/bin/minecraft-backup.sh
 (crontab -l 2>/dev/null; echo "*/10 * * * * /usr/local/bin/minecraft-backup.sh >> /var/log/minecraft-backup.log 2>&1") | crontab -
 
-# --- Setup Auto-Shutdown ---
+# --- Setup Auto-Shutdown (5 Minutes) ---
 cat <<EOF > /usr/local/bin/autoshutdown.sh
 #!/bin/bash
 CHECK_INTERVAL=300
-IDLE_LIMIT=900
+IDLE_LIMIT=300
 IDLE_COUNT=0
 while true; do
     if systemctl is-active --quiet minecraft; then
