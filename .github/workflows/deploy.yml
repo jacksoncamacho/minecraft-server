@@ -33,6 +33,7 @@ jobs:
         run: |
           echo "ip=$(terraform output -raw instance_public_ip)" >> $GITHUB_OUTPUT
           echo "s3_bucket=$(terraform output -raw s3_bucket_name)" >> $GITHUB_OUTPUT
+          echo "instance_id=$(terraform output -raw instance_id)" >> $GITHUB_OUTPUT
 
       - name: Sync Project Files to S3
         run: |
@@ -47,7 +48,7 @@ jobs:
           # Wait for SSM to be ready (it can take a few minutes on first boot)
           echo "Waiting for instance to be ready in SSM..."
           for i in {1..10}; do
-            INSTANCE_STATUS=$(aws ssm describe-instance-information --filters "Key=tag:Name,Values=minecraft-server" --query "InstanceInformationList[0].PingStatus" --output text)
+            INSTANCE_STATUS=$(aws ssm describe-instance-information --filters "Key=InstanceIds,Values=${{ steps.vars.outputs.instance_id }}" --query "InstanceInformationList[0].PingStatus" --output text)
             if [ "$INSTANCE_STATUS" == "Online" ]; then
               echo "Instance is online!"
               break
@@ -59,5 +60,5 @@ jobs:
           # Trigger file sync and restart
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
-            --targets "Key=instanceids,Values=$INSTANCE_ID" \
-            --parameters 'commands=["aws s3 sync s3://'"$S3_BUCKET"'/mods/ /opt/minecraft/mods/ --delete", "aws s3 sync s3://'"$S3_BUCKET"'/media/ /opt/minecraft/media/ --delete || true", "cp /opt/minecraft/media/logo64x64.png /opt/minecraft/server-icon.png 2>/dev/null || true", "chown -R minecraft:minecraft /opt/minecraft", "systemctl restart minecraft"]'
+            --targets "Key=InstanceIds,Values=${{ steps.vars.outputs.instance_id }}" \
+            --parameters 'commands=["aws s3 sync s3://${{ steps.vars.outputs.s3_bucket }}/mods/ /opt/minecraft/mods/ --delete", "aws s3 sync s3://${{ steps.vars.outputs.s3_bucket }}/media/ /opt/minecraft/media/ --delete || true", "cp /opt/minecraft/media/logo64x64.png /opt/minecraft/server-icon.png 2>/dev/null || true", "chown -R minecraft:minecraft /opt/minecraft", "systemctl restart minecraft"]'
