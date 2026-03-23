@@ -30,7 +30,7 @@ chown -R minecraft:minecraft $MINECRAFT_DIRECTORY
 # We use the official Fabric installer
 INSTALLER_URL="https://maven.fabricmc.net/net/fabricmc/fabric-installer/1.0.1/fabric-installer-1.0.1.jar"
 wget -O /tmp/fabric-installer.jar $INSTALLER_URL
-sudo -u minecraft java -jar /tmp/fabric-installer.jar server -mcversion $MINECRAFT_VERSION -loader $FABRIC_LOADER_VERSION -downloadMainWindow
+sudo -u minecraft java -jar /tmp/fabric-installer.jar server -mcversion $MINECRAFT_VERSION -loader $FABRIC_LOADER_VERSION -dir $MINECRAFT_DIRECTORY -downloadMainWindow
 
 # --- EULA ---
 echo "eula=true" > $MINECRAFT_DIRECTORY/eula.txt
