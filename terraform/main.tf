@@ -110,9 +110,16 @@ data "aws_ami" "ubuntu" {
   }
 }
 
+resource "aws_key_pair" "minecraft_key" {
+  count      = var.ssh_public_key != "" ? 1 : 0
+  key_name   = "minecraft-key-final"
+  public_key = var.ssh_public_key
+}
+
 resource "aws_spot_instance_request" "server" {
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = var.instance_type
+  key_name               = var.ssh_public_key != "" ? aws_key_pair.minecraft_key[0].key_name : null
   subnet_id              = data.aws_subnets.public.ids[0]
   vpc_security_group_ids = [aws_security_group.minecraft.id]
   iam_instance_profile   = aws_iam_instance_profile.minecraft_profile.name
@@ -150,5 +157,5 @@ resource "aws_route53_record" "minecraft" {
   name    = var.domain_name
   type    = "A"
   ttl     = "300"
-  records = [aws_spot_instance_request.server.public_ip]
+  records = [aws_eip.minecraft_eip.public_ip]
 }
