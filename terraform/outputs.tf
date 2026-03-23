@@ -7,5 +7,5 @@ output "s3_bucket_name" {
 }
 
 output "instance_id" {
-  value = aws_spot_instance_request.server.spot_instance_id
+  value = aws_instance.server.id
 }

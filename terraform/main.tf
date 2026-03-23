@@ -116,22 +116,19 @@ resource "aws_key_pair" "minecraft_key" {
   public_key      = var.ssh_public_key
 }
 
-resource "aws_spot_instance_request" "server" {
+# --- EC2 On-Demand Instance ---
+resource "aws_instance" "server" {
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = var.instance_type
   key_name               = var.ssh_public_key != "" ? aws_key_pair.minecraft_key[0].key_name : null
   subnet_id              = data.aws_subnets.public.ids[0]
   vpc_security_group_ids = [aws_security_group.minecraft.id]
   iam_instance_profile   = aws_iam_instance_profile.minecraft_profile.name
-  
-  spot_type            = "one-time" # One-time for simplicity in this setup
-  wait_for_fulfillment = true
 
   tags = {
-    Name             = "minecraft-server-final"
-    redeploy_trigger = "2026-03-23T00:15:00"
+    Name = "minecraft-server"
   }
-  
+
   user_data = templatefile("${path.module}/../scripts/setup-server.sh", {
     s3_bucket = aws_s3_bucket.backups.id
   })
@@ -149,7 +146,7 @@ resource "aws_eip" "minecraft_eip" {
 }
 
 resource "aws_eip_association" "minecraft_eip_assoc" {
-  instance_id   = aws_spot_instance_request.server.spot_instance_id
+  instance_id   = aws_instance.server.id
   allocation_id = aws_eip.minecraft_eip.id
 }
 

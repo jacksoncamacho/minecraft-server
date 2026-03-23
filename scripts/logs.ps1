@@ -3,4 +3,4 @@
 
 $domain = "seressa.bijadillo.com"
 Write-Host "Fetching the last 100 lines of the server log from $domain..." -ForegroundColor Cyan
-ssh -i seressa -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL ubuntu@$domain "sudo journalctl -u minecraft -n 100 --no-pager"
+ssh -i "$PSScriptRoot/seressa" -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL ubuntu@$domain "sudo journalctl -u minecraft -n 100 --no-pager"

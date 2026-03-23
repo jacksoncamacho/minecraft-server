@@ -3,4 +3,4 @@
 
 $domain = "seressa.bijadillo.com"
 Write-Host "Connecting to $domain via SSH..." -ForegroundColor Cyan
-ssh -i seressa -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL ubuntu@$domain
+ssh -i "$PSScriptRoot/seressa" -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL ubuntu@$domain

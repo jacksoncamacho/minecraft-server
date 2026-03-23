@@ -47,7 +47,7 @@ cat <<EOF > $MINECRAFT_DIRECTORY/server.properties
 difficulty=normal
 gamemode=survival
 max-players=20
-motd=Minecraft Server on AWS
+motd=Aplico lo que se a lo que mejor se hacer aparte de esto, amarte
 view-distance=10
 simulation-distance=8
 server-port=25565
