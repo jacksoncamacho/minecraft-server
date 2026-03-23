@@ -96,8 +96,8 @@ resource "aws_iam_instance_profile" "minecraft_profile" {
 
 # --- S3 Bucket for Backups ---
 resource "aws_s3_bucket" "backups" {
-  bucket_prefix = "minecraft-backups-"
-  force_destroy = true
+  bucket        = "minecraft-world-backups-seressa-final"
+  force_destroy = false # Protect the world data!
 }
 
 # --- EC2 Spot Instance ---

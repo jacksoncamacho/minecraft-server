@@ -105,6 +105,11 @@ WantedBy=multi-user.target
 EOF
 systemctl enable autoshutdown
 
+# --- Restore World from S3 ---
+echo "Checking for world backups in S3..."
+aws s3 sync s3://$S3_BUCKET/backups/world/ $MINECRAFT_DIRECTORY/world/
+chown -R minecraft:minecraft $MINECRAFT_DIRECTORY/world/
+
 # --- Setup Systemd Service ---
 cat <<EOF > /etc/systemd/system/minecraft.service
 [Unit]
