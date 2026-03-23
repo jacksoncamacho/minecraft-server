@@ -86,28 +86,46 @@ EOF
 chmod +x /usr/local/bin/minecraft-backup.sh
 (crontab -l 2>/dev/null; echo "*/10 * * * * /usr/local/bin/minecraft-backup.sh >> /var/log/minecraft-backup.log 2>&1") | crontab -
 
-# --- Setup Auto-Shutdown (5 Minutes) ---
+# --- Setup Auto-Shutdown (5 Minutes after 7 Min Grace) ---
 cat <<EOF > /usr/local/bin/autoshutdown.sh
 #!/bin/bash
-CHECK_INTERVAL=300
+CHECK_INTERVAL=60
 IDLE_LIMIT=300
+BOOT_GRACE_PERIOD=420
+UPTIME=\$(awk '{print int(\$1)}' /proc/uptime)
 IDLE_COUNT=0
+
+echo "Auto-shutdown script started. Grace period: \$BOOT_GRACE_PERIOD s"
+
 while true; do
+    sleep \$CHECK_INTERVAL
+    UPTIME=\$(awk '{print int(\$1)}' /proc/uptime)
+    
+    if [ \$UPTIME -lt \$BOOT_GRACE_PERIOD ]; then
+        echo "Within grace period (\$UPTIME/\$BOOT_GRACE_PERIOD). Skipping check."
+        continue
+    fi
+
     if systemctl is-active --quiet minecraft; then
-        PLAYER_COUNT=\$(netstat -atn | grep :25565 | grep ESTABLISHED | wc -l)
-        if [ "\$PLAYER_COUNT" -eq 0 ]; then
-            IDLE_COUNT=\$((\$IDLE_COUNT + \$CHECK_INTERVAL))
-            echo "No players online. Idle for \$IDLE_COUNT seconds."
+        # Check for active connections on port 25565
+        if ! netstat -tn | grep ":25565 " | grep "ESTABLISHED" > /dev/null; then
+            IDLE_COUNT=\$((IDLE_COUNT + CHECK_INTERVAL))
+            echo "Server idle for \$IDLE_COUNT/\$IDLE_LIMIT seconds..."
         else
             IDLE_COUNT=0
+            echo "Activity detected! Resetting idle counter."
         fi
-        if [ "\$IDLE_COUNT" -ge "\$IDLE_LIMIT" ]; then
+
+        if [ \$IDLE_COUNT -ge \$IDLE_LIMIT ]; then
+            echo "Idle limit reached. Shutting down safely."
             /usr/local/bin/minecraft-backup.sh
-            sudo shutdown -h now
+            # We use shutdown -h now to stop the instance
+            shutdown -h now
             exit 0
         fi
+    else
+        IDLE_COUNT=0
     fi
-    sleep \$CHECK_INTERVAL
 done
 EOF
 chmod +x /usr/local/bin/autoshutdown.sh
