@@ -57,11 +57,15 @@ chown -R minecraft:minecraft $MINECRAFT_DIRECTORY/mods
 # --- Setup Backup Cron (10 Minutes) ---
 cat <<EOF > /usr/local/bin/minecraft-backup.sh
 #!/bin/bash
-MINECRAFT_DIRECTORY="/opt/minecraft"
+# Fixed path to be consistent with Restore phase
 S3_BUCKET="$S3_BUCKET"
-TIMESTAMP=\$(date +"%Y%m%d_%H%M%S")
-echo "Starting backup at \$TIMESTAMP..."
-aws s3 sync \$MINECRAFT_DIRECTORY/world s3/\$S3_BUCKET/backups/world/
+echo "[$(date)] Starting world backup to s3://\$S3_BUCKET/world/"
+# Force a save-all if the server is running (via screen)
+# We send the command to the screen session
+screen -S minecraft -X eval 'stuff "save-all\\015"'
+sleep 5
+/usr/local/bin/aws s3 sync /opt/minecraft/world/ s3://\$S3_BUCKET/world/ --delete
+echo "[$(date)] Backup complete."
 EOF
 chmod +x /usr/local/bin/minecraft-backup.sh
 (crontab -l 2>/dev/null; echo "*/10 * * * * /usr/local/bin/minecraft-backup.sh >> /var/log/minecraft-backup.log 2>&1") | crontab -
@@ -107,7 +111,7 @@ systemctl enable autoshutdown
 
 # --- Restore World from S3 ---
 echo "Checking for world backups in S3..."
-aws s3 sync s3://$S3_BUCKET/backups/world/ $MINECRAFT_DIRECTORY/world/
+aws s3 sync s3://$S3_BUCKET/world/ $MINECRAFT_DIRECTORY/world/
 chown -R minecraft:minecraft $MINECRAFT_DIRECTORY/world/
 
 # --- Setup Systemd Service ---
