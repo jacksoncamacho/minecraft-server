@@ -3,43 +3,25 @@ provider "aws" {
 }
 
 # --- VPC & Networking ---
-resource "aws_vpc" "minecraft" {
-  cidr_block           = "10.0.0.0/16"
-  enable_dns_hostnames = true
-  tags = { Name = "minecraft-vpc" }
-}
-
-resource "aws_subnet" "public" {
-  vpc_id                  = aws_vpc.minecraft.id
-  cidr_block              = "10.0.1.0/24"
-  map_public_ip_on_launch = true
-  availability_zone       = "${var.aws_region}a"
-  tags = { Name = "minecraft-subnet" }
-}
-
-resource "aws_internet_gateway" "igw" {
-  vpc_id = aws_vpc.minecraft.id
-  tags   = { Name = "minecraft-igw" }
-}
-
-resource "aws_route_table" "public" {
-  vpc_id = aws_vpc.minecraft.id
-  route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.igw.id
+data "aws_vpc" "bijadillo" {
+  filter {
+    name   = "tag:Name"
+    values = ["*bijadillo*"]
   }
 }
 
-resource "aws_route_table_association" "public" {
-  subnet_id      = aws_subnet.public.id
-  route_table_id = aws_route_table.public.id
+data "aws_subnets" "public" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.bijadillo.id]
+  }
 }
 
 # --- Security Group ---
 resource "aws_security_group" "minecraft" {
   name        = "minecraft-sg"
   description = "Allow Minecraft and SSH"
-  vpc_id      = aws_vpc.minecraft.id
+  vpc_id      = data.aws_vpc.bijadillo.id
 
   ingress {
     from_port   = 25565
@@ -65,7 +47,7 @@ resource "aws_security_group" "minecraft" {
 
 # --- IAM Role for S3 Access ---
 resource "aws_iam_role" "minecraft_role" {
-  name = "minecraft-server-role"
+  name = "minecraft-server-role-bijadillo"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -123,7 +105,7 @@ data "aws_ami" "ubuntu" {
 resource "aws_spot_instance_request" "server" {
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = var.instance_type
-  subnet_id              = aws_subnet.public.id
+  subnet_id              = data.aws_subnets.public.ids[0]
   vpc_security_group_ids = [aws_security_group.minecraft.id]
   iam_instance_profile   = aws_iam_instance_profile.minecraft_profile.name
   
