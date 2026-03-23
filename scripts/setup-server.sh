@@ -13,12 +13,15 @@ apt-get update
 apt-get install -y openjdk-$JAVA_VERSION-jre-headless wget curl git screen net-tools unzip
 
 # Install AWS CLI v2
+echo "STEP: Installing AWS CLI v2..."
 curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
 unzip -q awscliv2.zip
 ./aws/install
 rm -rf awscliv2.zip aws/
+/usr/local/bin/aws --version
 
 # --- Setup Minecraft User ---
+echo "STEP: Setting up minecraft user..."
 if ! id -u minecraft >/dev/null 2>&1; then
   useradd -m -r -d $MINECRAFT_DIRECTORY minecraft
 fi
@@ -27,10 +30,12 @@ mkdir -p $MINECRAFT_DIRECTORY/mods
 chown -R minecraft:minecraft $MINECRAFT_DIRECTORY
 
 # --- Download Fabric Loader ---
-# We use the official Fabric installer
+echo "STEP: Downloading Fabric loader..."
 INSTALLER_URL="https://maven.fabricmc.net/net/fabricmc/fabric-installer/1.0.1/fabric-installer-1.0.1.jar"
 wget -O /tmp/fabric-installer.jar $INSTALLER_URL
+echo "STEP: Running Fabric installer..."
 sudo -u minecraft java -jar /tmp/fabric-installer.jar server -mcversion $MINECRAFT_VERSION -loader $FABRIC_LOADER_VERSION -dir $MINECRAFT_DIRECTORY -downloadMinecraft
+ls -l $MINECRAFT_DIRECTORY/fabric-server-launch.jar
 
 # --- EULA ---
 echo "eula=true" > $MINECRAFT_DIRECTORY/eula.txt
@@ -135,6 +140,7 @@ else
 fi
 
 # --- Setup Systemd Service ---
+echo "STEP: Creating systemd service..."
 cat <<EOF > /etc/systemd/system/minecraft.service
 [Unit]
 Description=Minecraft Server
@@ -153,6 +159,7 @@ Restart=always
 WantedBy=multi-user.target
 EOF
 
+echo "STEP: Starting services..."
 systemctl daemon-reload
 systemctl enable minecraft
 systemctl start minecraft
