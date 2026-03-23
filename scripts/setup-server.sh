@@ -61,8 +61,8 @@ cat <<EOF > /usr/local/bin/minecraft-backup.sh
 S3_BUCKET="$S3_BUCKET"
 echo "[$(date)] Starting world backup to s3://\$S3_BUCKET/world/"
 # Force a save-all if the server is running (via screen)
-# We send the command to the screen session
-screen -S minecraft -X eval 'stuff "save-all\\015"'
+# We send the command to the screen session as the minecraft user
+sudo -u minecraft screen -S minecraft -X eval 'stuff "save-all\\015"'
 sleep 5
 /usr/local/bin/aws s3 sync /opt/minecraft/world/ s3://\$S3_BUCKET/world/ --delete
 echo "[$(date)] Backup complete."
