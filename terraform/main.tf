@@ -129,7 +129,7 @@ resource "aws_instance" "server" {
 
   tags = {
     Name             = "minecraft-server-final-production"
-    redeploy_trigger = "2026-03-23T01:21:00"
+    redeploy_trigger = "2026-03-23T01:35:00"
   }
 
   user_data = templatefile("${path.module}/../scripts/setup-server.sh", {

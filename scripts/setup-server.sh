@@ -1,5 +1,6 @@
 #!/bin/bash
 set -e
+# --- REBUILD TRIGGER: 2026-03-23T01:35:00 ---
 
 # --- Configuration ---
 MINECRAFT_DIRECTORY="/opt/minecraft"
