@@ -135,4 +135,8 @@ EOF
 
 systemctl daemon-reload
 systemctl enable minecraft
-# We don't start it yet as we need to sync mods via the pipeline/script
+systemctl start minecraft
+
+echo "============================================"
+echo " SETUP COMPLETE - SERVER IS STARTING "
+echo "============================================"
