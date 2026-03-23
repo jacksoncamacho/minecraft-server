@@ -126,6 +126,11 @@ resource "aws_spot_instance_request" "server" {
   
   spot_type            = "one-time" # One-time for simplicity in this setup
   wait_for_fulfillment = true
+
+  tags = {
+    Name             = "minecraft-server-final"
+    redeploy_trigger = "2026-03-23T00:15:00"
+  }
   
   user_data = templatefile("${path.module}/../scripts/setup-server.sh", {
     s3_bucket = aws_s3_bucket.backups.id
