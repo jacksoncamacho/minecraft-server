@@ -42,12 +42,6 @@ jobs:
         working-directory: ./terraform
         run: terraform init
 
-      # Destroy first so the new t4g.small ARM instance gets a clean start.
-      # Safe to re-run: world data lives in S3, not on the instance.
-      - name: Terraform Destroy (clean rebuild)
-        working-directory: ./terraform
-        run: terraform destroy -auto-approve
-
       - name: Terraform Apply
         working-directory: ./terraform
         run: terraform apply -auto-approve
