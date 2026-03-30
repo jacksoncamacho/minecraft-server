@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-# --- REBUILD TRIGGER (t4g.small + optimized backups): 2026-03-29T20:38:00 ---
+# --- REBUILD TRIGGER (t4g.small + arm64 AWS CLI fix): 2026-03-29T21:46:00 ---
 
 # --- Configuration ---
 MINECRAFT_DIRECTORY="/opt/minecraft"
@@ -19,7 +19,7 @@ apt-get install -y openjdk-$JAVA_VERSION-jre-headless wget curl git screen net-t
 
 # Install AWS CLI v2
 echo "STEP: Installing AWS CLI v2..."
-curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+curl "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "awscliv2.zip"
 unzip -q awscliv2.zip
 ./aws/install
 rm -rf awscliv2.zip aws/
