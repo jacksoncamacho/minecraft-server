@@ -1,13 +1,17 @@
 #!/bin/bash
 set -e
-# --- REBUILD TRIGGER: 2026-03-23T01:35:00 ---
+# --- REBUILD TRIGGER (t4g.small + optimized backups): 2026-03-29T20:38:00 ---
 
 # --- Configuration ---
 MINECRAFT_DIRECTORY="/opt/minecraft"
 S3_BUCKET="${s3_bucket}"
 JAVA_VERSION="21"
-FABRIC_LOADER_VERSION="0.17.2"
-MINECRAFT_VERSION="1.21.10"
+FABRIC_LOADER_VERSION="0.18.4"
+MINECRAFT_VERSION="1.21.11"
+
+# Write env file so backup-s3.sh can read the bucket name at runtime
+mkdir -p $MINECRAFT_DIRECTORY
+echo "S3_BUCKET=$S3_BUCKET" > $MINECRAFT_DIRECTORY/.env
 
 # --- Install Dependencies ---
 apt-get update
@@ -43,7 +47,6 @@ echo "eula=true" > $MINECRAFT_DIRECTORY/eula.txt
 chown minecraft:minecraft $MINECRAFT_DIRECTORY/eula.txt
 
 # --- Server Properties ---
-# Basic optimized settings
 cat <<EOF > $MINECRAFT_DIRECTORY/server.properties
 difficulty=normal
 gamemode=survival
@@ -55,53 +58,50 @@ server-port=25565
 EOF
 chown minecraft:minecraft $MINECRAFT_DIRECTORY/server.properties
 
-# --- Mod Sync ---
+# --- Mod Sync (--size-only to avoid re-uploading unchanged jars) ---
+echo "STEP: Syncing mods from S3..."
 mkdir -p $MINECRAFT_DIRECTORY/mods
-/usr/local/bin/aws s3 sync s3://$S3_BUCKET/mods/ $MINECRAFT_DIRECTORY/mods/
+/usr/local/bin/aws s3 sync s3://$S3_BUCKET/mods/ $MINECRAFT_DIRECTORY/mods/ --size-only
 chown -R minecraft:minecraft $MINECRAFT_DIRECTORY/mods
 
-# --- Setup Backup Script (3-Version Rotation) ---
-cat <<EOF > /usr/local/bin/minecraft-backup.sh
-#!/bin/bash
-S3_BUCKET="$S3_BUCKET"
-TIMESTAMP=\$(date +"%Y%m%d_%H%M%S")
-echo "[$(date)] Starting versioned backup to s3://\$S3_BUCKET/backups/\$TIMESTAMP/"
-
-# 1. Force a save-all
-sudo -u minecraft screen -S minecraft -X eval 'stuff "save-all\\015"'
-sleep 5
-
-# 2. Sync to a NEW timestamped folder
-/usr/local/bin/aws s3 sync /opt/minecraft/world/ s3://\$S3_BUCKET/backups/\$TIMESTAMP/
-
-# 3. Cleanup: Keep only the 3 most recent snapshots
-echo "Cleaning up old backups..."
-# List prefixes, sort by date desc, skip top 3, delete the rest
-/usr/local/bin/aws s3 ls s3://\$S3_BUCKET/backups/ | grep "PRE " | awk '{print \$2}' | sort -r | tail -n +4 | while read -r line; do
-    echo "Deleting old backup: \$line"
-    /usr/local/bin/aws s3 rm s3://\$S3_BUCKET/backups/\$line --recursive
-done
-
-echo "[$(date)] Backup complete."
-EOF
+# --- Install backup script ---
+echo "STEP: Installing backup script..."
+cp /var/lib/cloud/instance/scripts/backup-s3.sh /usr/local/bin/minecraft-backup.sh 2>/dev/null || \
+  curl -sf "https://raw.githubusercontent.com/jacksoncamacho/minecraft-server/main/scripts/backup-s3.sh" \
+    -o /usr/local/bin/minecraft-backup.sh
 chmod +x /usr/local/bin/minecraft-backup.sh
-(crontab -l 2>/dev/null; echo "*/10 * * * * /usr/local/bin/minecraft-backup.sh >> /var/log/minecraft-backup.log 2>&1") | crontab -
 
 # --- Restore World from S3 (Latest Snapshot) ---
-echo "Checking for versioned backups in S3..."
+echo "STEP: Restoring world from S3..."
 LATEST_BACKUP=$(/usr/local/bin/aws s3 ls s3://$S3_BUCKET/backups/ | grep "PRE " | awk '{print $2}' | sort -r | head -n 1)
 
-if [ -n "$LATEST_BACKUP" ]; then
-    echo "Restoring latest backup: $LATEST_BACKUP"
+if [ -n "$LATEST_BACKUP" ] && [ "$LATEST_BACKUP" != "latest/" ] && [ "$LATEST_BACKUP" != "daily/" ]; then
+    echo "Restoring from old versioned backup: $LATEST_BACKUP"
     /usr/local/bin/aws s3 sync s3://$S3_BUCKET/backups/$LATEST_BACKUP $MINECRAFT_DIRECTORY/world/
-    chown -R minecraft:minecraft $MINECRAFT_DIRECTORY/world/
+elif /usr/local/bin/aws s3 ls s3://$S3_BUCKET/backups/latest/ --summarize 2>/dev/null | grep -q "Total Objects"; then
+    echo "Restoring from backups/latest/..."
+    /usr/local/bin/aws s3 sync s3://$S3_BUCKET/backups/latest/ $MINECRAFT_DIRECTORY/world/ --size-only
 else
-    echo "No versioned backups found. Checking for legacy 'world/' folder..."
-    /usr/local/bin/aws s3 sync s3://$S3_BUCKET/world/ $MINECRAFT_DIRECTORY/world/
-    chown -R minecraft:minecraft $MINECRAFT_DIRECTORY/world/
+    echo "No backup found. Starting fresh world."
 fi
+chown -R minecraft:minecraft $MINECRAFT_DIRECTORY/world/ 2>/dev/null || true
 
-# --- Setup Systemd Service ---
+# --- Install autoshutdown script ---
+cp /var/lib/cloud/instance/scripts/autoshutdown.sh /usr/local/bin/autoshutdown.sh 2>/dev/null || \
+  curl -sf "https://raw.githubusercontent.com/jacksoncamacho/minecraft-server/main/scripts/autoshutdown.sh" \
+    -o /usr/local/bin/autoshutdown.sh
+chmod +x /usr/local/bin/autoshutdown.sh
+
+# --- Setup Cron Jobs ---
+# [1] Incremental world backup every 15 min (only changed chunks uploaded, --size-only --delete)
+# [2] Daily S3-to-S3 snapshot at 3am (no EC2 bandwidth, pure S3 copy)
+(crontab -l 2>/dev/null; cat <<'CRON'
+*/15 * * * * /usr/local/bin/minecraft-backup.sh >> /var/log/minecraft-backup.log 2>&1
+0 3 * * * /usr/local/bin/aws s3 sync s3://${s3_bucket}/backups/latest/ s3://${s3_bucket}/backups/daily/$(date +\%Y\%m\%d)/ --size-only >> /var/log/minecraft-backup.log 2>&1
+CRON
+) | crontab -
+
+# --- Setup Systemd Service: Minecraft ---
 echo "STEP: Creating systemd service..."
 cat <<EOF > /etc/systemd/system/minecraft.service
 [Unit]
@@ -112,11 +112,24 @@ After=network.target
 User=minecraft
 WorkingDirectory=$MINECRAFT_DIRECTORY
 Environment="TERM=xterm-256color"
-# Running inside a screen session allows interactive console access
 ExecStart=/usr/bin/screen -DmS minecraft /usr/bin/java -Xms1G -Xmx1536M -XX:+UseG1GC -jar fabric-server-launch.jar nogui
-# Graceful shutdown by sending "stop" to the screen session
-ExecStop=/usr/bin/screen -p 0 -S minecraft -X eval 'stuff "stop\\015"'
+ExecStop=/usr/bin/screen -p 0 -S minecraft -X eval 'stuff "stop\015"'
 Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# --- Setup Systemd Service: Autoshutdown ---
+cat <<EOF > /etc/systemd/system/autoshutdown.service
+[Unit]
+Description=Minecraft Auto-Shutdown (stops instance when empty for 15 min)
+After=minecraft.service
+Requires=minecraft.service
+
+[Service]
+ExecStart=/usr/local/bin/autoshutdown.sh
+Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target
@@ -125,7 +138,9 @@ EOF
 echo "STEP: Starting services..."
 systemctl daemon-reload
 systemctl enable minecraft
+systemctl enable autoshutdown
 systemctl start minecraft
+systemctl start autoshutdown
 
 echo "============================================"
 echo " SETUP COMPLETE - SERVER IS STARTING "

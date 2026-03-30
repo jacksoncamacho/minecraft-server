@@ -100,13 +100,31 @@ resource "aws_s3_bucket" "backups" {
   force_destroy = false
 }
 
+# Expire daily snapshots after 7 days. backups/latest/ is intentionally excluded.
+resource "aws_s3_bucket_lifecycle_configuration" "backup_lifecycle" {
+  bucket = aws_s3_bucket.backups.id
+
+  rule {
+    id     = "expire-daily-snapshots"
+    status = "Enabled"
+
+    filter {
+      prefix = "backups/daily/"
+    }
+
+    expiration {
+      days = 7
+    }
+  }
+}
+
 # --- EC2 Spot Instance ---
 data "aws_ami" "ubuntu" {
   most_recent = true
   owners      = ["099720109477"] # Canonical
   filter {
     name   = "name"
-    values = ["ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"]
+    values = ["ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-arm64-server-*"]
   }
 }
 
@@ -129,7 +147,7 @@ resource "aws_instance" "server" {
 
   tags = {
     Name             = "minecraft-server-final-production"
-    redeploy_trigger = "2026-03-23T01:35:00"
+    redeploy_trigger = "2026-03-29T20:38:00"
   }
 
   user_data = templatefile("${path.module}/../scripts/setup-server.sh", {

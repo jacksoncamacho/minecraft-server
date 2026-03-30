@@ -1,19 +1,37 @@
 #!/bin/bash
-# --- Configuration ---
-MINECRAFT_DIRECTORY="/opt/minecraft"
-S3_BUCKET="${s3_bucket}"
-TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+# backup-s3.sh — Optimal incremental world backup to S3
+# Called every 15 min by cron. Only uploads changed files. No new folders created.
 
-# --- Backup ---
-echo "Starting backup at $TIMESTAMP..."
+set -euo pipefail
 
-# Sync world folder to S3
-# We use sync to avoid uploading everything every time, but also keep versioned backups?
-# Let's do a simple sync for now as requested for "nothing fragile"
-aws s3 sync $MINECRAFT_DIRECTORY/world s3://$S3_BUCKET/backups/world/
+# Load S3 bucket name written at boot by setup-server.sh
+ENV_FILE="/opt/minecraft/.env"
+if [ ! -f "$ENV_FILE" ]; then
+  echo "[backup] ERROR: $ENV_FILE not found. Was setup-server.sh run?" >&2
+  exit 1
+fi
+# shellcheck source=/dev/null
+source "$ENV_FILE"
 
-# Optional: Periodic full zip for safety
-# zip -r backup_$TIMESTAMP.zip world/
-# aws s3 cp backup_$TIMESTAMP.zip s3://$S3_BUCKET/full_backups/
+MINECRAFT_DIR="/opt/minecraft"
+LOG_PREFIX="[backup $(date '+%Y-%m-%d %H:%M:%S')]"
 
-echo "Backup completed."
+echo "$LOG_PREFIX Starting incremental backup to s3://$S3_BUCKET/backups/latest/"
+
+# 1. Tell Minecraft to flush all chunks to disk, then wait briefly
+if sudo -u minecraft screen -list 2>/dev/null | grep -q minecraft; then
+  sudo -u minecraft screen -S minecraft -X eval 'stuff "save-all\015"'
+  sleep 3
+fi
+
+# 2. Incremental sync — only uploads files whose size changed.
+#    --delete removes files in S3 that no longer exist locally (prevents silent growth).
+#    --size-only avoids re-uploading files just because their timestamp changed.
+/usr/local/bin/aws s3 sync \
+  "$MINECRAFT_DIR/world/" \
+  "s3://$S3_BUCKET/backups/latest/" \
+  --size-only \
+  --delete \
+  --no-progress
+
+echo "$LOG_PREFIX Incremental backup complete."

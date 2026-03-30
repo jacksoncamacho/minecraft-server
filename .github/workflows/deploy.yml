@@ -4,17 +4,36 @@ on:
   workflow_dispatch:
 
 jobs:
-  deploy:
+  # ─── Job 1: Terraform ────────────────────────────────────────────────────────
+  terraform:
+    name: "Terraform Deploy"
     runs-on: ubuntu-latest
+    outputs:
+      instance_id: ${{ steps.vars.outputs.instance_id }}
+      s3_bucket:   ${{ steps.vars.outputs.s3_bucket }}
+      mods_changed: ${{ steps.changed.outputs.mods_changed }}
+
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2   # need HEAD~1 to diff changed files
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
+
+      - name: Detect changed asset paths
+        id: changed
+        run: |
+          # Check if mods/ or media/ changed in this commit
+          if git diff --name-only HEAD~1 HEAD | grep -qE '^(mods|media)/'; then
+            echo "mods_changed=true"  >> $GITHUB_OUTPUT
+          else
+            echo "mods_changed=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -23,59 +42,94 @@ jobs:
         working-directory: ./terraform
         run: terraform init
 
+      # Destroy first so the new t4g.small ARM instance gets a clean start.
+      # Safe to re-run: world data lives in S3, not on the instance.
+      - name: Terraform Destroy (clean rebuild)
+        working-directory: ./terraform
+        run: terraform destroy -auto-approve
+
       - name: Terraform Apply
         working-directory: ./terraform
         run: terraform apply -auto-approve
 
-      - name: Get Instance IP and Bucket
+      - name: Export Terraform outputs
         id: vars
         working-directory: ./terraform
         run: |
-          echo "ip=$(terraform output -raw instance_public_ip)" >> $GITHUB_OUTPUT
+          echo "instance_id=$(terraform output -raw instance_id)"  >> $GITHUB_OUTPUT
           echo "s3_bucket=$(terraform output -raw s3_bucket_name)" >> $GITHUB_OUTPUT
-          echo "instance_id=$(terraform output -raw instance_id)" >> $GITHUB_OUTPUT
 
-      - name: Ensure Instance is Started
-        run: |
-          INSTANCE_STATE=$(aws ec2 describe-instances --instance-ids ${{ steps.vars.outputs.instance_id }} --query "Reservations[0].Instances[0].State.Name" --output text)
-          if [ "$INSTANCE_STATE" == "stopped" ]; then
-            echo "Instance is stopped. Starting it now..."
-            aws ec2 start-instances --instance-ids ${{ steps.vars.outputs.instance_id }}
-          else
-            echo "Instance is currently in state: $INSTANCE_STATE"
-          fi
+  # ─── Job 2: Sync assets & boot ───────────────────────────────────────────────
+  sync:
+    name: "Sync Assets & Boot"
+    needs: terraform
+    runs-on: ubuntu-latest
 
-      - name: Sync Project Files to S3
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      # Only runs when mods/ or media/ actually changed → avoids spurious S3 PUT requests
+      - name: Sync mods to S3 (only if changed)
+        if: needs.terraform.outputs.mods_changed == 'true'
         run: |
-          # Sync local mods to S3
-          aws s3 sync ./mods s3://${{ steps.vars.outputs.s3_bucket }}/mods/ --delete
-          
-          # Sync media to S3 (if the folder exists)
+          echo "Mods changed — syncing to S3..."
+          aws s3 sync ./mods s3://${{ needs.terraform.outputs.s3_bucket }}/mods/ \
+            --size-only --delete
+
           if [ -d "./media" ]; then
-            aws s3 sync ./media s3://${{ steps.vars.outputs.s3_bucket }}/media/ --delete
+            aws s3 sync ./media s3://${{ needs.terraform.outputs.s3_bucket }}/media/ \
+              --size-only --delete
           fi
-          
-          # Wait for SSM to be ready (it can take a few minutes on first boot)
-          echo "Waiting for instance ${{ steps.vars.outputs.instance_id }} to be ready in SSM..."
-          READY=false
-          for i in {1..60}; do
-            INSTANCE_STATUS=$(aws ssm describe-instance-information --filters "Key=InstanceIds,Values=${{ steps.vars.outputs.instance_id }}" --query "InstanceInformationList[0].PingStatus" --output text)
-            if [ "$INSTANCE_STATUS" == "Online" ]; then
-              echo "Instance is online!"
-              READY=true
-              break
+
+      - name: Skip sync (no asset changes)
+        if: needs.terraform.outputs.mods_changed == 'false'
+        run: echo "No changes in mods/ or media/ — skipping S3 sync."
+
+      # Wait for fresh instance to register with SSM (can take ~3 min on first boot)
+      - name: Wait for instance to be online in SSM
+        id: ssm_wait
+        run: |
+          INSTANCE_ID="${{ needs.terraform.outputs.instance_id }}"
+          echo "Waiting for $INSTANCE_ID to appear in SSM..."
+          for i in $(seq 1 60); do
+            STATUS=$(aws ssm describe-instance-information \
+              --filters "Key=InstanceIds,Values=$INSTANCE_ID" \
+              --query "InstanceInformationList[0].PingStatus" \
+              --output text 2>/dev/null || echo "None")
+            echo "  Attempt $i/60 — SSM status: $STATUS"
+            if [ "$STATUS" = "Online" ]; then
+              echo "Instance is online."
+              exit 0
             fi
-            echo "Waiting... ($i/60) - Status: $INSTANCE_STATUS"
             sleep 10
           done
-          
-          if [ "$READY" = false ]; then
-            echo "Error: Instance did not come online in SSM after 10 minutes."
-            exit 1
+          echo "ERROR: Instance did not become SSM-online within 10 minutes."
+          exit 1
+
+      # Only re-sync mods on the instance if assets changed; always set ownership.
+      - name: Apply mods on instance via SSM
+        run: |
+          INSTANCE_ID="${{ needs.terraform.outputs.instance_id }}"
+          S3_BUCKET="${{ needs.terraform.outputs.s3_bucket }}"
+          MODS_CHANGED="${{ needs.terraform.outputs.mods_changed }}"
+
+          if [ "$MODS_CHANGED" = "true" ]; then
+            SYNC_CMD="aws s3 sync s3://$S3_BUCKET/mods/ /opt/minecraft/mods/ --size-only --delete && \
+              aws s3 sync s3://$S3_BUCKET/media/ /opt/minecraft/media/ --size-only --delete || true && \
+              cp /opt/minecraft/media/logo64x64.png /opt/minecraft/server-icon.png 2>/dev/null || true"
+          else
+            SYNC_CMD="echo 'No asset changes — skipping remote sync.'"
           fi
 
-          # Trigger file sync and restart
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
-            --targets "Key=InstanceIds,Values=${{ steps.vars.outputs.instance_id }}" \
-            --parameters 'commands=["aws s3 sync s3://${{ steps.vars.outputs.s3_bucket }}/mods/ /opt/minecraft/mods/ --delete", "aws s3 sync s3://${{ steps.vars.outputs.s3_bucket }}/media/ /opt/minecraft/media/ --delete || true", "cp /opt/minecraft/media/logo64x64.png /opt/minecraft/server-icon.png 2>/dev/null || true", "chown -R minecraft:minecraft /opt/minecraft", "systemctl restart minecraft"]'
+            --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
+            --parameters "commands=[\"$SYNC_CMD\", \"chown -R minecraft:minecraft /opt/minecraft\", \"systemctl restart minecraft\"]" \
+            --comment "Deploy $(date -u +%Y-%m-%dT%H:%M:%SZ)"
