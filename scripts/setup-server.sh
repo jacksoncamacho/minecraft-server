@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-# --- REBUILD TRIGGER (t4g.small + arm64 AWS CLI fix): 2026-03-29T21:46:00 ---
+# --- REBUILD TRIGGER (t4g.small + inline helper scripts fix): 2026-03-29T22:20:00 ---
 
 # --- Configuration ---
 MINECRAFT_DIRECTORY="/opt/minecraft"
@@ -66,9 +66,9 @@ chown -R minecraft:minecraft $MINECRAFT_DIRECTORY/mods
 
 # --- Install backup script ---
 echo "STEP: Installing backup script..."
-cp /var/lib/cloud/instance/scripts/backup-s3.sh /usr/local/bin/minecraft-backup.sh 2>/dev/null || \
-  curl -sf "https://raw.githubusercontent.com/jacksoncamacho/minecraft-server/main/scripts/backup-s3.sh" \
-    -o /usr/local/bin/minecraft-backup.sh
+cat <<'SCRIPT_EOF' > /usr/local/bin/minecraft-backup.sh
+${backup_script}
+SCRIPT_EOF
 chmod +x /usr/local/bin/minecraft-backup.sh
 
 # --- Restore World from S3 (Latest Snapshot) ---
@@ -87,9 +87,10 @@ fi
 chown -R minecraft:minecraft $MINECRAFT_DIRECTORY/world/ 2>/dev/null || true
 
 # --- Install autoshutdown script ---
-cp /var/lib/cloud/instance/scripts/autoshutdown.sh /usr/local/bin/autoshutdown.sh 2>/dev/null || \
-  curl -sf "https://raw.githubusercontent.com/jacksoncamacho/minecraft-server/main/scripts/autoshutdown.sh" \
-    -o /usr/local/bin/autoshutdown.sh
+echo "STEP: Installing autoshutdown script..."
+cat <<'SCRIPT_EOF' > /usr/local/bin/autoshutdown.sh
+${autoshutdown_script}
+SCRIPT_EOF
 chmod +x /usr/local/bin/autoshutdown.sh
 
 # --- Setup Cron Jobs ---

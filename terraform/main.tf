@@ -151,7 +151,9 @@ resource "aws_instance" "server" {
   }
 
   user_data = templatefile("${path.module}/../scripts/setup-server.sh", {
-    s3_bucket = aws_s3_bucket.backups.id
+    s3_bucket           = aws_s3_bucket.backups.id
+    backup_script       = file("${path.module}/../scripts/backup-s3.sh")
+    autoshutdown_script = file("${path.module}/../scripts/autoshutdown.sh")
   })
 
   root_block_device {
