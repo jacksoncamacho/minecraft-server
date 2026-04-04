@@ -5,7 +5,7 @@ variable "aws_region" {
 
 variable "instance_type" {
   description = "EC2 instance type"
-  default     = "t4g.small"
+  default     = "t3.small"
 }
 
 variable "route53_zone_id" {

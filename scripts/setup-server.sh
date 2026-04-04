@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-# --- REBUILD TRIGGER (t4g.small + inline helper scripts fix): 2026-03-29T22:20:00 ---
+# --- REBUILD TRIGGER (t3.small x86 + swap): 2026-04-03T20:31:00 ---
 
 # --- Configuration ---
 MINECRAFT_DIRECTORY="/opt/minecraft"
@@ -13,13 +13,21 @@ MINECRAFT_VERSION="1.21.11"
 mkdir -p $MINECRAFT_DIRECTORY
 echo "S3_BUCKET=$S3_BUCKET" > $MINECRAFT_DIRECTORY/.env
 
+# --- Create Swap File (2 GB) ---
+echo "STEP: Creating 2 GB swap file..."
+fallocate -l 2G /swapfile
+chmod 600 /swapfile
+mkswap /swapfile
+swapon /swapfile
+echo '/swapfile none swap sw 0 0' >> /etc/fstab
+
 # --- Install Dependencies ---
 apt-get update
 apt-get install -y openjdk-$JAVA_VERSION-jre-headless wget curl git screen net-tools unzip
 
 # Install AWS CLI v2
 echo "STEP: Installing AWS CLI v2..."
-curl "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "awscliv2.zip"
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
 unzip -q awscliv2.zip
 ./aws/install
 rm -rf awscliv2.zip aws/
