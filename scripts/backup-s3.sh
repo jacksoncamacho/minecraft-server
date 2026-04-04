@@ -25,12 +25,17 @@ if sudo -u minecraft screen -list 2>/dev/null | grep -q minecraft; then
 fi
 
 # 2. Incremental sync — only uploads files whose size changed.
-#    --delete removes files in S3 that no longer exist locally (prevents silent growth).
 #    --size-only avoids re-uploading files just because their timestamp changed.
+#    --exclude skips junk files that change every tick but aren't needed for restore.
 /usr/local/bin/aws s3 sync \
   "$MINECRAFT_DIR/world/" \
   "s3://$S3_BUCKET/backups/latest/" \
   --size-only \
+  --exclude "*.lock" \
+  --exclude "session.lock" \
+  --exclude "*.tmp" \
+  --exclude "logs/*" \
+  --exclude "crash-reports/*" \
   --no-progress
 
 echo "$LOG_PREFIX Incremental backup complete."
