@@ -42,6 +42,28 @@ jobs:
         working-directory: ./terraform
         run: terraform init
 
+      # Trigger a world backup on the running instance before Terraform destroys it
+      - name: Pre-deploy backup (save world before destroy)
+        continue-on-error: true
+        run: |
+          INSTANCE_ID=$(aws ec2 describe-instances --region us-east-1 \
+            --filters "Name=tag:Name,Values=minecraft-server-final-production" "Name=instance-state-name,Values=running" \
+            --query "Reservations[0].Instances[0].InstanceId" --output text)
+          if [ -n "$INSTANCE_ID" ] && [ "$INSTANCE_ID" != "None" ]; then
+            echo "Triggering pre-deploy backup on $INSTANCE_ID..."
+            CMD_ID=$(aws ssm send-command \
+              --instance-ids "$INSTANCE_ID" \
+              --document-name "AWS-RunShellScript" \
+              --parameters 'commands=["bash /usr/local/bin/minecraft-backup.sh"]' \
+              --query "Command.CommandId" --output text)
+            echo "Waiting for backup to complete (up to 60s)..."
+            aws ssm wait command-executed --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" 2>/dev/null || \
+              sleep 30
+            echo "Pre-deploy backup done."
+          else
+            echo "No running instance found — skipping pre-deploy backup."
+          fi
+
       - name: Terraform Apply
         working-directory: ./terraform
         run: terraform apply -auto-approve

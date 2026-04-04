@@ -87,14 +87,14 @@ chmod +x /usr/local/bin/minecraft-backup.sh
 
 # --- Restore World from S3 (Latest Snapshot) ---
 echo "STEP: Restoring world from S3..."
-LATEST_BACKUP=$(/usr/local/bin/aws s3 ls s3://$S3_BUCKET/backups/ | grep "PRE " | awk '{print $2}' | sort -r | head -n 1)
 
-if [ -n "$LATEST_BACKUP" ] && [ "$LATEST_BACKUP" != "latest/" ] && [ "$LATEST_BACKUP" != "daily/" ]; then
-    echo "Restoring from old versioned backup: $LATEST_BACKUP"
-    /usr/local/bin/aws s3 sync s3://$S3_BUCKET/backups/$LATEST_BACKUP $MINECRAFT_DIRECTORY/world/
-elif /usr/local/bin/aws s3 ls s3://$S3_BUCKET/backups/latest/ --summarize 2>/dev/null | grep -q "Total Objects"; then
-    echo "Restoring from backups/latest/..."
-    /usr/local/bin/aws s3 sync s3://$S3_BUCKET/backups/latest/ $MINECRAFT_DIRECTORY/world/ --size-only
+# Priority: backups/latest/ (most recent incremental) → newest daily snapshot → fresh world
+if /usr/local/bin/aws s3 ls s3://$S3_BUCKET/backups/latest/ 2>/dev/null | grep -q .; then
+    echo "Restoring from backups/latest/ (most recent)..."
+    /usr/local/bin/aws s3 sync s3://$S3_BUCKET/backups/latest/ $MINECRAFT_DIRECTORY/world/
+elif DAILY=$(/usr/local/bin/aws s3 ls s3://$S3_BUCKET/backups/daily/ 2>/dev/null | grep "PRE " | awk '{print $2}' | sort -r | head -n 1) && [ -n "$DAILY" ]; then
+    echo "Restoring from daily snapshot: backups/daily/$DAILY"
+    /usr/local/bin/aws s3 sync s3://$S3_BUCKET/backups/daily/$DAILY $MINECRAFT_DIRECTORY/world/
 else
     echo "No backup found. Starting fresh world."
 fi
@@ -108,10 +108,10 @@ SCRIPT_EOF
 chmod +x /usr/local/bin/autoshutdown.sh
 
 # --- Setup Cron Jobs ---
-# [1] Incremental world backup every 15 min (only changed chunks uploaded, --size-only --delete)
+# [1] Incremental world backup every 5 min (only changed chunks uploaded, --size-only)
 # [2] Daily S3-to-S3 snapshot at 3am (no EC2 bandwidth, pure S3 copy)
 (crontab -l 2>/dev/null; cat <<'CRON'
-*/15 * * * * /usr/local/bin/minecraft-backup.sh >> /var/log/minecraft-backup.log 2>&1
+*/5 * * * * /usr/local/bin/minecraft-backup.sh >> /var/log/minecraft-backup.log 2>&1
 0 3 * * * /usr/local/bin/aws s3 sync s3://${s3_bucket}/backups/latest/ s3://${s3_bucket}/backups/daily/$(date +\%Y\%m\%d)/ --size-only >> /var/log/minecraft-backup.log 2>&1
 CRON
 ) | crontab -

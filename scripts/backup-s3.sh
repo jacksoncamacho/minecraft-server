@@ -31,7 +31,6 @@ fi
   "$MINECRAFT_DIR/world/" \
   "s3://$S3_BUCKET/backups/latest/" \
   --size-only \
-  --delete \
   --no-progress
 
 echo "$LOG_PREFIX Incremental backup complete."
