@@ -72,6 +72,12 @@ mkdir -p $MINECRAFT_DIRECTORY/mods
 /usr/local/bin/aws s3 sync s3://$S3_BUCKET/mods/ $MINECRAFT_DIRECTORY/mods/ --size-only
 chown -R minecraft:minecraft $MINECRAFT_DIRECTORY/mods
 
+# --- Media Sync & Server Icon ---
+echo "STEP: Syncing media and setting server icon..."
+/usr/local/bin/aws s3 sync s3://$S3_BUCKET/media/ $MINECRAFT_DIRECTORY/media/ --size-only 2>/dev/null || true
+cp $MINECRAFT_DIRECTORY/media/logo64x64.png $MINECRAFT_DIRECTORY/server-icon.png 2>/dev/null || true
+chown minecraft:minecraft $MINECRAFT_DIRECTORY/server-icon.png 2>/dev/null || true
+
 # --- Install backup script ---
 echo "STEP: Installing backup script..."
 cat <<'SCRIPT_EOF' > /usr/local/bin/minecraft-backup.sh
