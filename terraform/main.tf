@@ -46,7 +46,8 @@ resource "aws_route" "public_internet_access" {
 }
 
 resource "aws_route_table_association" "public" {
-  subnet_id      = data.aws_subnets.public.ids[0]
+  count          = length(data.aws_subnets.public.ids)
+  subnet_id      = data.aws_subnets.public.ids[count.index]
   route_table_id = aws_route_table.public.id
 }
 
