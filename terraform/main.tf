@@ -25,30 +25,21 @@ data "aws_subnets" "public" {
   }
 }
 
-resource "aws_internet_gateway" "igw" {
-  vpc_id = data.aws_vpc.bijadillo.id
-  tags = {
-    Name = "bijadillo-igw"
+data "aws_internet_gateway" "default" {
+  filter {
+    name   = "attachment.vpc-id"
+    values = [data.aws_vpc.bijadillo.id]
   }
 }
 
-resource "aws_route_table" "public" {
-  vpc_id = data.aws_vpc.bijadillo.id
-  tags = {
-    Name = "bijadillo-public-rt"
-  }
+data "aws_route_table" "selected" {
+  subnet_id = data.aws_subnets.public.ids[0]
 }
 
 resource "aws_route" "public_internet_access" {
-  route_table_id         = aws_route_table.public.id
+  route_table_id         = data.aws_route_table.selected.id
   destination_cidr_block = "0.0.0.0/0"
-  gateway_id             = aws_internet_gateway.igw.id
-}
-
-resource "aws_route_table_association" "public" {
-  count          = length(data.aws_subnets.public.ids)
-  subnet_id      = data.aws_subnets.public.ids[count.index]
-  route_table_id = aws_route_table.public.id
+  gateway_id             = data.aws_internet_gateway.default.id
 }
 
 # --- Security Group ---
