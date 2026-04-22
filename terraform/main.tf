@@ -25,6 +25,31 @@ data "aws_subnets" "public" {
   }
 }
 
+resource "aws_internet_gateway" "igw" {
+  vpc_id = data.aws_vpc.bijadillo.id
+  tags = {
+    Name = "bijadillo-igw"
+  }
+}
+
+resource "aws_route_table" "public" {
+  vpc_id = data.aws_vpc.bijadillo.id
+  tags = {
+    Name = "bijadillo-public-rt"
+  }
+}
+
+resource "aws_route" "public_internet_access" {
+  route_table_id         = aws_route_table.public.id
+  destination_cidr_block = "0.0.0.0/0"
+  gateway_id             = aws_internet_gateway.igw.id
+}
+
+resource "aws_route_table_association" "public" {
+  subnet_id      = data.aws_subnets.public.ids[0]
+  route_table_id = aws_route_table.public.id
+}
+
 # --- Security Group ---
 resource "aws_security_group" "minecraft" {
   name        = "minecraft-sg-final"
